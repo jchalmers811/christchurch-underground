@@ -4,36 +4,102 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Christchurch Underground 3D</title>
-  <meta name="description" content="Cone penetration tests at four Christchurch sites, drawn as 3D soil columns.">
+  <meta name="description" content="Cone penetration tests and water wells beneath Christchurch, in 3D.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='5' fill='%23e3c069'/%3E%3Crect y='5' width='16' height='5' fill='%235b7ea3'/%3E%3Crect y='10' width='16' height='6' fill='%23b8862b'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-  <div id="viewer" aria-label="3D view of soil columns"></div>
+  <div id="viewer" aria-label="3D view"></div>
 
   <aside id="panel">
     <header>
       <h1>Christchurch Underground</h1>
       <a class="back" href="../">← Map and cross-sections</a>
     </header>
-    <p class="caption" id="site-caption"></p>
-    <div class="site-buttons" id="site-buttons" role="tablist"></div>
+
+    <div class="tabs" id="mode-tabs" role="tablist">
+      <button data-mode="sites" aria-selected="true">CPT sites</button>
+      <button data-mode="city" aria-selected="false">Whole city</button>
+    </div>
+
+    <!-- Sites mode -->
+    <section class="sites-only">
+      <p class="caption" id="site-caption"></p>
+      <div class="site-buttons" id="site-buttons"></div>
+
+      <div class="row">
+        <span>Show as</span>
+        <div class="seg" id="shape">
+          <button data-value="columns" aria-pressed="true">Columns</button>
+          <button data-value="fence" aria-pressed="false">Fence</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>Colour by</span>
+        <div class="seg" id="colour-by">
+          <button data-value="soil" aria-pressed="true">Soil type</button>
+          <button data-value="liquefaction" aria-pressed="false">Liquefaction</button>
+        </div>
+      </div>
+
+      <div class="liq-only">
+        <label class="control">
+          <span>Shaking (peak ground acceleration) <output id="pga-value">0.35 g</output></span>
+          <input id="pga" type="range" min="0.1" max="0.7" step="0.05" value="0.35">
+        </label>
+        <div id="liq-summary"></div>
+      </div>
+    </section>
+
+    <!-- City mode -->
+    <section class="city-only">
+      <p class="caption"><span id="city-count">…</span> ECan wells with a recorded depth, hanging below
+        the city. Orange markers are the four CPT sites; click one to open it.</p>
+      <label class="check"><input id="only-logged" type="checkbox"> Only wells with a soil log</label>
+    </section>
 
     <label class="control">
       <span>Vertical exaggeration <output id="exag-value">1×</output></span>
       <input id="exag" type="range" min="1" max="5" step="0.5" value="1">
     </label>
-    <label class="check"><input id="show-water" type="checkbox" checked> Groundwater (from CPT)</label>
-    <label class="check"><input id="show-nzgd" type="checkbox" checked> NZGD investigations (not available here)</label>
 
-    <ul class="legend" id="legend"></ul>
+    <div class="sites-only">
+      <label class="check"><input id="show-water" type="checkbox" checked> Groundwater (from CPT)</label>
+      <label class="check"><input id="show-nzgd" type="checkbox" checked> NZGD investigations (not available here)</label>
+    </div>
+
+    <ul class="legend sites-only soil-only" id="legend-soil"></ul>
+    <ul class="legend sites-only liq-only" id="legend-liq"></ul>
+    <ul class="legend sites-only">
+      <li><span class="swatch water"></span>Groundwater (from CPT)</li>
+      <li><span class="swatch nzgd"></span>NZGD investigation (outline only)</li>
+    </ul>
+    <ul class="legend city-only" id="legend-depth"></ul>
+
+    <button id="tour" class="tour">▶ Tour</button>
+
     <p class="hint">Drag to rotate · right-drag or Shift-drag to pan · scroll to zoom.
-      Hover a column for details.</p>
-    <p class="fine">Each column is one CPT, coloured by Robertson (2010) soil behaviour type
-      (inferred from cone resistance, not samples). Columns are drawn wider than the real
-      3.6 cm cone so they're visible. Data: Stuedlein, Jana &amp; Cary (2021), DesignSafe-CI,
-      <a href="https://doi.org/10.17603/ds2-fy1v-hh47">doi:10.17603/ds2-fy1v-hh47</a>, ODC-BY.</p>
+      <span class="sites-only">Click a column for its full CPT trace.</span></p>
+
+    <details class="fine">
+      <summary>About this view</summary>
+      <p class="sites-only">Each column is one CPT, coloured by Robertson (2010) soil behaviour type
+        (inferred from cone resistance, not samples) and drawn wider than the real 3.6 cm cone.
+        The fence gives each CPT the stretch of line halfway to its neighbours; nothing is
+        interpolated between them.</p>
+      <p class="liq-only sites-only">Liquefaction is a screening calculation (Robertson &amp; Wride 1998 /
+        Robertson 2009) for a magnitude <span id="mw">6.2</span> earthquake, like 22 February 2011,
+        at the shaking level you choose. Unit weights are estimated from the CPT, groundwater
+        comes from the CPT, and no other corrections are applied. It isn't a design check.
+        LPI (liquefaction potential index): 0 very low, under 5 low, 5–15 high, over 15 very high.</p>
+      <p>Data: Stuedlein, Jana &amp; Cary (2021), DesignSafe-CI,
+        <a href="https://doi.org/10.17603/ds2-fy1v-hh47">doi:10.17603/ds2-fy1v-hh47</a>, ODC-BY.
+        <span class="city-only">Wells: Environment Canterbury, "Wells &amp; Bores – Existing", CC BY 4.0.
+        Map © OpenStreetMap contributors.</span></p>
+    </details>
   </aside>
+
+  <aside id="trace" hidden></aside>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

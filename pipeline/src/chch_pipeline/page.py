@@ -246,7 +246,8 @@ footer p { margin: 0 0 8px; }
 penetration tests (CPTs) from Oregon State University and {{n_wells}} water wells and bores
 from Environment Canterbury. Three of the CPT sites liquefied in the 2010–11 earthquakes;
 one didn't. Pick a site to see where it is, then scroll down to see the ground beneath it,
-or <a href="3d/"><strong>explore the sites in 3D</strong></a>.</p>
+or <a href="3d/"><strong>explore the sites in 3D</strong></a> (including
+<a href="3d/#city">every well beneath the city</a>).</p>
 
 <div class="site-buttons" id="site-buttons"></div>
 <div id="map" role="region" aria-label="Map of the four test sites"></div>

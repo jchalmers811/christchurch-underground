@@ -1,112 +1,147 @@
-// 3D viewer for the OSU CPT sites. Data comes from `python -m chch_pipeline.export_web`.
+// 3D viewer for Christchurch Underground. Data comes from
+// `python -m chch_pipeline.export_web` (and `chch_pipeline.basemap` for the city image).
 //
-// The scene is a local Cartesian frame in metres: x = east, y = north (NZTM2000, relative
-// to the site centre), z = up. Depths below ground become negative z, multiplied by the
-// vertical exaggeration.
+// Two scenes, both in a local Cartesian frame in metres (x = east, y = north from
+// NZTM2000, z = up; depths below ground are negative z times the vertical exaggeration):
+// - Sites: one OSU CPT line as columns or a fence, coloured by soil type or liquefaction.
+// - City: every ECan well with a known depth, hanging below a map of Christchurch.
 
-import { COORDINATE_SYSTEM, Deck, OrbitView, type OrbitViewState, type PickingInfo } from "@deck.gl/core";
-import { ColumnLayer, PathLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { Deck, LinearInterpolator, OrbitView, type OrbitViewState, type PickingInfo } from "@deck.gl/core";
+import { cityLayers, DEPTH_BANDS } from "./city-layers";
+import { FS_CLASSES, lpi, lpiLabel } from "./liquefaction";
+import { buildSlices, siteLayers, type ColourBy, type Shape } from "./site-layers";
+import { traceChart } from "./trace-chart";
+import type { Basemap, CityData, Hole, Site, SiteDetail, SitesData, Slice, WellRow } from "./types";
 
-type Interval = [top: number, bottom: number, zone: number];
+type Mode = "sites" | "city";
 
-interface Hole {
-  id: string;
-  source: "osu" | "nzgd";
-  kind: string;
-  x: number;
-  y: number;
-  ground: number;
-  depth: number | null;
-  gw: number | null;
-  date: string;
-  intervals?: Interval[];
-}
-
-interface Site {
-  id: string;
-  name: string;
-  caption: string;
-  origin: [number, number];
-  holes: Hole[];
-}
-
-interface Data {
-  zones: Record<string, { label: string; colour: string }>;
-  sites: Site[];
-}
-
-/** One drawable slice of a CPT column. */
-interface Slice {
-  hole: Hole;
-  top: number;
-  bottom: number;
-  zone: number;
-}
-
-type RGBA = [number, number, number, number];
-type P3 = [number, number, number];
-
-const COLUMN_RADIUS = 0.3; // m. The real cone is 3.6 cm across; drawn wider to be visible.
-const WATER_RGBA: RGBA = [47, 127, 209, 255];
-const NZGD_RGBA: RGBA = [120, 114, 104, 255];
-const GRID_STEP = 5; // m
+const BASE = import.meta.env.BASE_URL;
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const state = {
-  data: null as Data | null,
+  mode: "sites" as Mode,
+  data: null as SitesData | null,
   site: null as Site | null,
-  exag: 1,
+  details: new Map<string, SiteDetail>(),
+  city: null as CityData | null,
+  basemap: null as Basemap | null,
+  siteExag: 1,
+  cityExag: 10,
+  shape: "columns" as Shape,
+  colourBy: "soil" as ColourBy,
+  pga: 0.35,
   showWater: true,
   showNzgd: true,
+  onlyLogged: false,
+  traceHole: null as Hole | null,
+  touring: false,
+  view: null as OrbitViewState | null,
 };
 
-const hexToRgba = (hex: string, alpha = 255): RGBA => [
-  parseInt(hex.slice(1, 3), 16),
-  parseInt(hex.slice(3, 5), 16),
-  parseInt(hex.slice(5, 7), 16),
-  alpha,
-];
+const dark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-const isDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+// --- Deck ------------------------------------------------------------------------------------
 
 const deck = new Deck<OrbitView>({
-  parent: document.getElementById("viewer") as HTMLDivElement,
-  views: new OrbitView({ orbitAxis: "Z", fovy: 35 }),
+  parent: $<HTMLDivElement>("viewer"),
+  views: new OrbitView({ orbitAxis: "Z", fovy: 35, far: 10000 }),
   controller: true,
   initialViewState: { target: [0, 0, 0], zoom: 3, rotationX: 25, rotationOrbit: -35 },
-  getTooltip: ({ object, layer }: PickingInfo) => {
-    if (!object || !state.data) return null;
-    if (layer?.id === "cpt") {
-      const s = object as Slice;
-      const label = state.data.zones[String(s.zone)]?.label ?? "Unknown";
-      return {
-        html: `<strong>${s.hole.id}</strong><br>${s.top.toFixed(2)}–${s.bottom.toFixed(2)} m · ${label}`,
-      };
-    }
-    const h = object as Hole;
-    if (layer?.id === "nzgd") {
-      return { html: `<strong>${h.id}</strong> · ${h.kind} · ${h.depth ?? "?"} m<br>Held in the NZGD, not available here` };
-    }
-    if (layer?.id === "water") {
-      return { html: `<strong>${h.id}</strong><br>Groundwater at ${h.gw} m (from CPT)` };
-    }
-    return null;
+  onViewStateChange: ({ viewState }) => {
+    state.view = viewState as OrbitViewState;
   },
+  onInteractionStateChange: (s) => {
+    if (s.isDragging || s.isZooming || s.isPanning || s.isRotating) stopTour();
+  },
+  getTooltip,
+  onClick,
 });
 
-/** Fit the camera to a site: centred on the middle of the columns, sized to the window. */
-function viewFor(site: Site): OrbitViewState {
+function setView(view: Partial<OrbitViewState> & Record<string, unknown>): void {
+  deck.setProps({ initialViewState: view as OrbitViewState });
+}
+
+function getTooltip({ object, layer }: PickingInfo): { html: string } | null {
+  if (!object) return null;
+  switch (layer?.id) {
+    case "cpt":
+    case "cpt-fence": {
+      const s = object as Slice;
+      return { html: `<strong>${s.hole.id}</strong><br>${s.top.toFixed(2)}–${s.bottom.toFixed(2)} m · ${s.label}<br><em>Click for the full trace</em>` };
+    }
+    case "nzgd": {
+      const h = object as Hole;
+      return { html: `<strong>${h.id}</strong> · ${h.kind} · ${h.depth ?? "?"} m<br>Held in the NZGD, not available here` };
+    }
+    case "water": {
+      const h = object as Hole;
+      return { html: `<strong>${h.id}</strong><br>Groundwater at ${h.gw} m (from CPT)` };
+    }
+    case "wells": {
+      const [, , depth, strata, no, year] = object as WellRow;
+      return {
+        html: `<strong>${no}</strong> · ECan well<br>${depth} m deep${year ? ` · drilled ${year}` : ""}<br>${strata > 0 ? `Soil log: ${strata} layers` : "No soil log"}`,
+      };
+    }
+    case "city-sites": {
+      const s = object as CityData["sites"][number];
+      return { html: `<strong>${s.name}</strong><br>OSU CPT line · click to open` };
+    }
+  }
+  return null;
+}
+
+function onClick({ object, layer }: PickingInfo): void {
+  if (!object) return;
+  if (layer?.id?.startsWith("cpt")) void openTrace((object as Slice).hole);
+  if (layer?.id === "city-sites") selectSite((object as CityData["sites"][number]).id);
+  if (layer?.id === "wells") {
+    const no = (object as WellRow)[4];
+    window.open(`https://www.ecan.govt.nz/data/well-search/welldetails/?WellNo=${encodeURIComponent(no)}`, "_blank", "noopener");
+  }
+}
+
+// --- Rendering -------------------------------------------------------------------------------
+
+function render(): void {
+  const { data, site } = state;
+  if (state.mode === "city") {
+    if (!state.city) return;
+    deck.setProps({
+      layers: cityLayers(state.city, state.basemap, `${BASE}data/${state.basemap?.image ?? ""}`, {
+        exag: state.cityExag,
+        onlyLogged: state.onlyLogged,
+        dark: dark(),
+      }),
+    });
+    return;
+  }
+  if (!data || !site) return;
+  const opts = {
+    exag: state.siteExag,
+    colourBy: state.colourBy,
+    shape: state.shape,
+    pga: state.pga,
+    showWater: state.showWater,
+    showNzgd: state.showNzgd,
+    dark: dark(),
+  };
+  const detail = state.details.get(site.id) ?? null;
+  deck.setProps({ layers: siteLayers(site, buildSlices(site, data, detail, opts), opts) });
+  updateLiquefactionSummary();
+  if (state.traceHole) void openTrace(state.traceHole);
+}
+
+/** Fit the camera to a site: centred on the middle of the columns, sized to the canvas. */
+function siteView(site: Site): OrbitViewState {
   const xs = site.holes.map((h) => h.x);
   const ys = site.holes.map((h) => h.y);
   const maxDepth = Math.max(...site.holes.map((h) => h.depth ?? 0));
-  const extent = Math.max(
-    Math.max(...xs) - Math.min(...xs),
-    Math.max(...ys) - Math.min(...ys),
-    maxDepth * state.exag,
-  ) + 8;
-  const viewer = document.getElementById("viewer")!;
+  const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), maxDepth * state.siteExag) + 8;
+  const viewer = $("viewer");
   const px = Math.min(viewer.clientWidth, viewer.clientHeight);
   return {
-    target: [0, 0, (-maxDepth * state.exag) / 2],
+    target: [0, 0, (-maxDepth * state.siteExag) / 2],
     zoom: Math.log2((px * 0.75) / extent),
     rotationX: 25,
     rotationOrbit: -35,
@@ -114,210 +149,284 @@ function viewFor(site: Site): OrbitViewState {
   } as OrbitViewState;
 }
 
-function render(): void {
-  const { data, site, exag } = state;
-  if (!data || !site) return;
+function cityView(): OrbitViewState {
+  const [x0, x1, y0, y1] = state.city!.bbox;
+  const viewer = $("viewer");
+  const px = Math.min(viewer.clientWidth, viewer.clientHeight);
+  return {
+    target: [(x0 + x1) / 2, (y0 + y1) / 2, -60 * state.cityExag],
+    zoom: Math.log2((px * 0.95) / Math.max(x1 - x0, y1 - y0)),
+    rotationX: 32,
+    rotationOrbit: -20,
+    transitionDuration: 800,
+  } as OrbitViewState;
+}
 
-  const osu = site.holes.filter((h) => h.source === "osu");
-  const nzgd = site.holes.filter((h) => h.source === "nzgd");
-  const slices: Slice[] = osu.flatMap((hole) =>
-    (hole.intervals ?? []).map(([top, bottom, zone]) => ({ hole, top, bottom, zone })),
-  );
-  const zoneRgba = Object.fromEntries(
-    Object.entries(data.zones).map(([z, v]) => [z, hexToRgba(v.colour)]),
-  ) as Record<string, RGBA>;
+// --- Data loading ----------------------------------------------------------------------------
 
-  // Ground plane and depth ruler, sized to the site.
-  const xs = site.holes.map((h) => h.x);
-  const ys = site.holes.map((h) => h.y);
-  const pad = 4;
-  const [x0, x1] = [Math.min(...xs) - pad, Math.max(...xs) + pad];
-  const [y0, y1] = [Math.min(...ys) - pad, Math.max(...ys) + pad];
-  const maxDepth = Math.ceil(Math.max(...site.holes.map((h) => h.depth ?? 0)));
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}data/${path}`);
+  if (!res.ok) throw new Error(`Couldn't load ${path} (${res.status})`);
+  return (await res.json()) as T;
+}
 
-  const grid: { path: P3[] }[] = [];
-  for (let x = Math.ceil(x0 / GRID_STEP) * GRID_STEP; x <= x1; x += GRID_STEP) {
-    grid.push({ path: [[x, y0, 0], [x, y1, 0]] });
+async function ensureDetail(site: Site): Promise<SiteDetail> {
+  let d = state.details.get(site.id);
+  if (!d) {
+    d = await getJson<SiteDetail>(`sites/${site.id}.json`);
+    state.details.set(site.id, d);
   }
-  for (let y = Math.ceil(y0 / GRID_STEP) * GRID_STEP; y <= y1; y += GRID_STEP) {
-    grid.push({ path: [[x0, y, 0], [x1, y, 0]] });
+  return d;
+}
+
+async function ensureCity(): Promise<void> {
+  if (state.city) return;
+  const [city, basemap] = await Promise.all([
+    getJson<CityData>("city-wells.json"),
+    getJson<Basemap>("city-basemap.json").catch(() => null),
+  ]);
+  state.city = city;
+  state.basemap = basemap;
+  $("city-count").textContent = city.wells.length.toLocaleString();
+}
+
+// --- Liquefaction summary and trace card -----------------------------------------------------
+
+const SITE_NOTES: Record<string, string> = {
+  meadows:
+    "Meadows didn't liquefy in 2011, yet this method predicts liquefaction in its looser sands below about 5 m. " +
+    "Those sands sit under a 2.5–5 m clay layer, which likely kept them from reaching the surface. " +
+    "Simplified methods and LPI don't account for a capping layer like that, so they over-predict here.",
+};
+
+function updateLiquefactionSummary(): void {
+  const el = $("liq-summary");
+  const site = state.site;
+  const detail = site && state.details.get(site.id);
+  if (state.colourBy !== "liquefaction" || !site || !detail) {
+    el.innerHTML = "";
+    return;
   }
+  const values = Object.values(detail.holes).map((rows) => lpi(rows, state.pga)).sort((a, b) => a - b);
+  const median = values[Math.floor(values.length / 2)];
+  el.innerHTML =
+    `<p>Median LPI across ${values.length} CPTs: <strong>${median.toFixed(1)}</strong> (${lpiLabel(median)}); ` +
+    `range ${values[0].toFixed(1)}–${values[values.length - 1].toFixed(1)}.</p>` +
+    (SITE_NOTES[site.id] ? `<p class="note">${SITE_NOTES[site.id]}</p>` : "");
+}
 
-  const ruler: { path: P3[] }[] = [{ path: [[x0, y0, 0], [x0, y0, -maxDepth * exag]] }];
-  const rulerLabels: { position: P3; text: string }[] = [];
-  for (let d = 0; d <= maxDepth; d += 2) {
-    ruler.push({ path: [[x0, y0, -d * exag], [x0 + 0.8, y0, -d * exag]] });
-    rulerLabels.push({ position: [x0 - 0.4, y0, -d * exag], text: `${d} m` });
+async function openTrace(hole: Hole): Promise<void> {
+  const site = state.site;
+  if (!site || !state.data) return;
+  state.traceHole = hole;
+  const card = $("trace");
+  card.hidden = false;
+  const detail = await ensureDetail(site);
+  card.innerHTML = traceChart(hole, detail.holes[hole.id] ?? [], state.data, state.pga);
+  card.querySelector<HTMLButtonElement>(".close")!.onclick = closeTrace;
+}
+
+function closeTrace(): void {
+  state.traceHole = null;
+  $("trace").hidden = true;
+}
+
+// --- Mode and site selection -----------------------------------------------------------------
+
+async function setMode(mode: Mode, moveCamera = true): Promise<void> {
+  state.mode = mode;
+  document.body.dataset.mode = mode;
+  document.querySelectorAll<HTMLButtonElement>("#mode-tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === mode)));
+  closeTrace();
+  if (mode === "city") {
+    await ensureCity();
+    if (location.hash !== "#city") history.replaceState(null, "", "#city");
+    render();
+    if (moveCamera) setView(cityView());
+  } else {
+    selectSite(state.site?.id ?? "", moveCamera);
   }
-
-  const dark = isDark();
-  const ink: RGBA = dark ? [236, 232, 225, 255] : [31, 29, 26, 255];
-  const muted: RGBA = dark ? [156, 150, 140, 255] : [107, 102, 94, 255];
-
-  const common = { coordinateSystem: COORDINATE_SYSTEM.CARTESIAN };
-  const z = (h: Hole, depth: number) => (h.ground - depth) * exag;
-
-  deck.setProps({
-    layers: [
-      new ColumnLayer<Slice>({
-        ...common,
-        id: "cpt",
-        data: slices,
-        diskResolution: 20,
-        radius: COLUMN_RADIUS,
-        extruded: true,
-        pickable: true,
-        autoHighlight: true,
-        highlightColor: [255, 255, 255, 90],
-        getPosition: (s) => [s.hole.x, s.hole.y, z(s.hole, s.bottom)],
-        getElevation: (s) => (s.bottom - s.top) * exag,
-        getFillColor: (s) => zoneRgba[String(s.zone)],
-        updateTriggers: { getPosition: exag, getElevation: exag },
-      }),
-      new ColumnLayer<Hole>({
-        ...common,
-        id: "nzgd",
-        data: nzgd,
-        visible: state.showNzgd,
-        diskResolution: 12,
-        radius: COLUMN_RADIUS,
-        extruded: true,
-        filled: false,
-        wireframe: true,
-        pickable: true,
-        getPosition: (h) => [h.x, h.y, z(h, h.depth ?? 0)],
-        getElevation: (h) => (h.depth ?? 0) * exag,
-        getLineColor: NZGD_RGBA,
-        updateTriggers: { getPosition: exag, getElevation: exag },
-      }),
-      new ColumnLayer<Hole>({
-        ...common,
-        id: "water",
-        data: osu.filter((h) => h.gw !== null),
-        visible: state.showWater,
-        diskResolution: 20,
-        radius: COLUMN_RADIUS * 1.9,
-        extruded: true,
-        pickable: true,
-        getPosition: (h) => [h.x, h.y, z(h, h.gw ?? 0) - 0.03],
-        getElevation: 0.06,
-        getFillColor: WATER_RGBA,
-        updateTriggers: { getPosition: exag },
-      }),
-      new SolidPolygonLayer({
-        ...common,
-        id: "ground",
-        data: [{ polygon: [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0]] }],
-        getPolygon: (d: { polygon: P3[] }) => d.polygon,
-        getFillColor: dark ? [90, 80, 64, 70] : [140, 120, 90, 45],
-        // Translucent: don't write depth, so columns below still show through.
-        parameters: { depthWriteEnabled: false },
-      }),
-      new PathLayer<{ path: P3[] }>({
-        ...common,
-        id: "grid",
-        data: grid,
-        getPath: (d) => d.path,
-        getColor: dark ? [255, 255, 255, 40] : [60, 50, 40, 50],
-        getWidth: 1,
-        widthUnits: "pixels",
-      }),
-      new PathLayer<{ path: P3[] }>({
-        ...common,
-        id: "ruler",
-        data: ruler,
-        getPath: (d) => d.path,
-        getColor: muted,
-        getWidth: 1.5,
-        widthUnits: "pixels",
-        updateTriggers: { getPath: exag },
-      }),
-      new TextLayer<{ position: P3; text: string }>({
-        ...common,
-        id: "ruler-labels",
-        data: rulerLabels,
-        getPosition: (d) => d.position,
-        getText: (d) => d.text,
-        getSize: 11,
-        getColor: muted,
-        getTextAnchor: "end",
-        getAlignmentBaseline: "center",
-        fontFamily: "system-ui, sans-serif",
-        updateTriggers: { getPosition: exag },
-      }),
-      new TextLayer<Hole>({
-        ...common,
-        id: "labels",
-        data: site.holes.filter((h) => h.source === "osu" || state.showNzgd),
-        getPosition: (h) => [h.x, h.y, h.ground * exag + 0.6],
-        getText: (h) => h.id.replace(/^OSU /, ""),
-        getSize: 11,
-        getColor: (h) => (h.source === "osu" ? ink : muted),
-        getAlignmentBaseline: "bottom",
-        fontFamily: "system-ui, sans-serif",
-        updateTriggers: { getPosition: exag },
-      }),
-    ],
-  });
 }
 
 function selectSite(id: string, moveCamera = true): void {
   const site = state.data?.sites.find((s) => s.id === id) ?? state.data?.sites[0];
   if (!site) return;
+  if (state.mode !== "sites") {
+    state.mode = "sites";
+    document.body.dataset.mode = "sites";
+    document.querySelectorAll<HTMLButtonElement>("#mode-tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === "sites")));
+  }
+  if (state.site?.id !== site.id) closeTrace();
   state.site = site;
-  document.getElementById("site-caption")!.textContent = site.caption;
-  document.querySelectorAll<HTMLButtonElement>("#site-buttons button").forEach((b) => {
-    b.setAttribute("aria-selected", String(b.dataset.site === site.id));
-  });
+  $("site-caption").textContent = site.caption;
+  document.querySelectorAll<HTMLButtonElement>("#site-buttons button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.site === site.id)));
   if (location.hash !== `#${site.id}`) history.replaceState(null, "", `#${site.id}`);
   render();
-  if (moveCamera) deck.setProps({ initialViewState: viewFor(site) });
+  if (state.colourBy === "liquefaction") void ensureDetail(site).then(render);
+  if (moveCamera) setView(siteView(site));
 }
 
-function buildPanel(data: Data): void {
-  const buttons = document.getElementById("site-buttons")!;
+// --- Tour --------------------------------------------------------------------------------------
+
+const ORBIT = new LinearInterpolator({ transitionProps: ["rotationOrbit"] });
+
+function tourStep(): void {
+  if (!state.touring || !state.view) return;
+  setView({
+    ...state.view,
+    rotationOrbit: (state.view.rotationOrbit ?? 0) + 360,
+    transitionDuration: state.mode === "city" ? 30000 : 18000,
+    transitionInterpolator: ORBIT,
+    onTransitionEnd: () => {
+      if (!state.touring) return;
+      if (state.mode === "sites" && state.data && state.site) {
+        // Move on to the next site, then keep turning.
+        const sites = state.data.sites;
+        const next = sites[(sites.indexOf(state.site) + 1) % sites.length];
+        selectSite(next.id);
+        setTimeout(tourStep, 900);
+      } else {
+        tourStep();
+      }
+    },
+  });
+}
+
+function startTour(): void {
+  state.touring = true;
+  $("tour").textContent = "■ Stop tour";
+  tourStep();
+}
+
+function stopTour(): void {
+  if (!state.touring) return;
+  state.touring = false;
+  $("tour").textContent = "▶ Tour";
+  if (state.view) setView({ ...state.view, transitionDuration: 0 });
+}
+
+// --- Panel -------------------------------------------------------------------------------------
+
+function segmented(id: string, onChange: (value: string) => void): void {
+  const group = $(id);
+  group.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+    b.onclick = () => {
+      group.querySelectorAll("button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+      onChange(b.dataset.value!);
+    };
+  });
+}
+
+function buildLegends(data: SitesData): void {
+  $("legend-soil").innerHTML = Object.values(data.zones)
+    .map((z) => `<li><span class="swatch" style="background:${z.colour}"></span>${z.label}</li>`)
+    .join("");
+  $("legend-liq").innerHTML = Object.values(FS_CLASSES)
+    .map((c) => `<li><span class="swatch" style="background:${c.colour}"></span>${c.label}</li>`)
+    .join("");
+  $("legend-depth").innerHTML = DEPTH_BANDS.map((b) => `<li><span class="swatch round" style="background:${b.css}"></span>${b.label}</li>`).join("");
+}
+
+function buildPanel(data: SitesData): void {
+  const buttons = $("site-buttons");
   for (const s of data.sites) {
     const b = document.createElement("button");
     b.textContent = s.name.replace(" Intermediate School", "");
     b.dataset.site = s.id;
-    b.setAttribute("role", "tab");
     b.onclick = () => selectSite(s.id);
     buttons.append(b);
   }
+  buildLegends(data);
 
-  const legend = document.getElementById("legend")!;
-  legend.innerHTML =
-    Object.values(data.zones)
-      .map((z) => `<li><span class="swatch" style="background:${z.colour}"></span>${z.label}</li>`)
-      .join("") +
-    `<li><span class="swatch water"></span>Groundwater (from CPT)</li>` +
-    `<li><span class="swatch nzgd"></span>NZGD investigation (outline only)</li>`;
+  document.querySelectorAll<HTMLButtonElement>("#mode-tabs button").forEach((b) => {
+    b.onclick = () => void setMode(b.dataset.mode as Mode);
+  });
 
-  const exag = document.getElementById("exag") as HTMLInputElement;
-  const exagOut = document.getElementById("exag-value")!;
-  exag.oninput = () => {
-    state.exag = Number(exag.value);
-    exagOut.textContent = `${state.exag}×`;
+  segmented("shape", (v) => {
+    state.shape = v as Shape;
+    render();
+  });
+  segmented("colour-by", (v) => {
+    state.colourBy = v as ColourBy;
+    document.body.dataset.colour = v;
+    if (v === "liquefaction" && state.site) void ensureDetail(state.site).then(render);
+    render();
+  });
+
+  const pga = $<HTMLInputElement>("pga");
+  pga.value = String(data.liquefaction.default_pga);
+  state.pga = data.liquefaction.default_pga;
+  $("pga-value").textContent = `${state.pga} g`;
+  $("mw").textContent = String(data.liquefaction.mw);
+  pga.oninput = () => {
+    state.pga = Number(pga.value);
+    $("pga-value").textContent = `${state.pga} g`;
     render();
   };
-  exag.onchange = () => state.site && deck.setProps({ initialViewState: viewFor(state.site) });
 
-  const water = document.getElementById("show-water") as HTMLInputElement;
-  water.onchange = () => { state.showWater = water.checked; render(); };
-  const nzgd = document.getElementById("show-nzgd") as HTMLInputElement;
-  nzgd.onchange = () => { state.showNzgd = nzgd.checked; render(); };
+  const exag = $<HTMLInputElement>("exag");
+  const exagOut = $("exag-value");
+  const syncExag = () => {
+    const v = state.mode === "city" ? state.cityExag : state.siteExag;
+    exag.min = state.mode === "city" ? "1" : "1";
+    exag.max = state.mode === "city" ? "30" : "5";
+    exag.step = state.mode === "city" ? "1" : "0.5";
+    exag.value = String(v);
+    exagOut.textContent = `${v}×`;
+  };
+  exag.oninput = () => {
+    if (state.mode === "city") state.cityExag = Number(exag.value);
+    else state.siteExag = Number(exag.value);
+    exagOut.textContent = `${exag.value}×`;
+    render();
+  };
+  exag.onchange = () => setView(state.mode === "city" ? cityView() : siteView(state.site!));
+  new MutationObserver(syncExag).observe(document.body, { attributes: true, attributeFilter: ["data-mode"] });
+  syncExag();
+
+  const water = $<HTMLInputElement>("show-water");
+  water.onchange = () => {
+    state.showWater = water.checked;
+    render();
+  };
+  const nzgd = $<HTMLInputElement>("show-nzgd");
+  nzgd.onchange = () => {
+    state.showNzgd = nzgd.checked;
+    render();
+  };
+  const logged = $<HTMLInputElement>("only-logged");
+  logged.onchange = () => {
+    state.onlyLogged = logged.checked;
+    render();
+  };
+
+  $("tour").onclick = () => (state.touring ? stopTour() : startTour());
+}
+
+// --- Start -------------------------------------------------------------------------------------
+
+function route(): void {
+  const hash = location.hash.slice(1);
+  if (hash === "city") void setMode("city");
+  else selectSite(hash);
 }
 
 async function main(): Promise<void> {
-  const res = await fetch(`${import.meta.env.BASE_URL}data/osu-sites.json`);
-  if (!res.ok) throw new Error(`Couldn't load site data (${res.status})`);
-  state.data = (await res.json()) as Data;
+  state.data = await getJson<SitesData>("osu-sites.json");
   buildPanel(state.data);
-  selectSite(location.hash.slice(1));
-  window.addEventListener("hashchange", () => selectSite(location.hash.slice(1)));
+  document.body.dataset.mode = "sites";
+  document.body.dataset.colour = "soil";
+  route();
+  window.addEventListener("hashchange", route);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+
+  // Small hook for scripted screenshots (the README GIF): set the camera directly.
+  (window as unknown as { chch: unknown }).chch = {
+    setView: (v: Partial<OrbitViewState>) => setView({ ...(state.view ?? {}), ...v, transitionDuration: 0 }),
+    view: () => state.view,
+  };
 }
 
 main().catch((err) => {
-  document.getElementById("site-caption")!.textContent = String(err);
+  $("site-caption").textContent = String(err);
 });
