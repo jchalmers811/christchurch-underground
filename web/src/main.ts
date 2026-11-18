@@ -6,7 +6,7 @@
 // - Sites: one OSU CPT line as columns or a fence, coloured by soil type or liquefaction.
 // - City: every ECan well with a known depth, hanging below a map of Christchurch.
 
-import { Deck, LinearInterpolator, OrbitView, type OrbitViewState, type PickingInfo } from "@deck.gl/core";
+import { Deck, OrbitView, type OrbitViewState, type PickingInfo } from "@deck.gl/core";
 import { cityLayers, DEPTH_BANDS } from "./city-layers";
 import { FS_CLASSES, lpi, lpiLabel } from "./liquefaction";
 import { buildSlices, siteLayers, type ColourBy, type Shape } from "./site-layers";
@@ -51,13 +51,17 @@ const deck = new Deck<OrbitView>({
     state.view = viewState as OrbitViewState;
   },
   onInteractionStateChange: (s) => {
-    if (s.isDragging || s.isZooming || s.isPanning || s.isRotating) stopTour();
+    // Only the user's own input stops the tour, not our camera transitions between sites.
+    if (s.isDragging || (!s.inTransition && (s.isZooming || s.isPanning || s.isRotating))) stopTour();
   },
   getTooltip,
   onClick,
 });
 
 function setView(view: Partial<OrbitViewState> & Record<string, unknown>): void {
+  // A direct (untransitioned) change doesn't fire onViewStateChange, so record it here.
+  // Transitions report their own intermediate states.
+  if (!view.transitionDuration) state.view = { ...(state.view ?? {}), ...view } as OrbitViewState;
   deck.setProps({ initialViewState: view as OrbitViewState });
 }
 
@@ -268,41 +272,41 @@ function selectSite(id: string, moveCamera = true): void {
 
 // --- Tour --------------------------------------------------------------------------------------
 
-const ORBIT = new LinearInterpolator({ transitionProps: ["rotationOrbit"] });
+// The tour turns the camera a little every animation frame. (A single +360° transition
+// doesn't work: OrbitView wraps rotationOrbit, so deck.gl sees no change to animate.)
+const TOUR_SECONDS_PER_TURN = { sites: 18, city: 30 };
+const tour = { frame: 0, last: 0, turned: 0, pauseUntil: 0 };
 
-function tourStep(): void {
-  if (!state.touring || !state.view) return;
-  setView({
-    ...state.view,
-    rotationOrbit: (state.view.rotationOrbit ?? 0) + 360,
-    transitionDuration: state.mode === "city" ? 30000 : 18000,
-    transitionInterpolator: ORBIT,
-    onTransitionEnd: () => {
-      if (!state.touring) return;
-      if (state.mode === "sites" && state.data && state.site) {
-        // Move on to the next site, then keep turning.
-        const sites = state.data.sites;
-        const next = sites[(sites.indexOf(state.site) + 1) % sites.length];
-        selectSite(next.id);
-        setTimeout(tourStep, 900);
-      } else {
-        tourStep();
-      }
-    },
-  });
+function tourTick(now: number): void {
+  if (!state.touring) return;
+  if (tour.last && now > tour.pauseUntil && state.view) {
+    const step = (360 / (TOUR_SECONDS_PER_TURN[state.mode] * 1000)) * (now - tour.last);
+    tour.turned += step;
+    setView({ ...state.view, rotationOrbit: (state.view.rotationOrbit ?? 0) + step, transitionDuration: 0 });
+    if (state.mode === "sites" && tour.turned >= 360 && state.data && state.site) {
+      // One full turn done: move on to the next site, and let its camera move settle.
+      const sites = state.data.sites;
+      selectSite(sites[(sites.indexOf(state.site) + 1) % sites.length].id);
+      tour.turned = 0;
+      tour.pauseUntil = now + 1000;
+    }
+  }
+  tour.last = now;
+  tour.frame = requestAnimationFrame(tourTick);
 }
 
 function startTour(): void {
   state.touring = true;
   $("tour").textContent = "■ Stop tour";
-  tourStep();
+  Object.assign(tour, { last: 0, turned: 0, pauseUntil: 0 });
+  tour.frame = requestAnimationFrame(tourTick);
 }
 
 function stopTour(): void {
   if (!state.touring) return;
   state.touring = false;
+  cancelAnimationFrame(tour.frame);
   $("tour").textContent = "▶ Tour";
-  if (state.view) setView({ ...state.view, transitionDuration: 0 });
 }
 
 // --- Panel -------------------------------------------------------------------------------------
