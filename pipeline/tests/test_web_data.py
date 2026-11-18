@@ -54,3 +54,57 @@ def test_no_raw_traces_are_exported(data):
     text = DATA.read_text(encoding="utf-8")
     for key in ('"qc"', '"fs"', '"u2"'):
         assert key not in text
+
+
+# --- Per-site detail files (traces + liquefaction terms) -----------------------------------
+
+SITE_DIR = DATA.parent / "sites"
+CITY = DATA.parent / "city-wells.json"
+
+
+@pytest.fixture(scope="module")
+def details(data):
+    return {
+        s["id"]: json.loads((SITE_DIR / f"{s['id']}.json").read_text(encoding="utf-8"))
+        for s in data["sites"]
+    }
+
+
+def test_every_osu_cpt_has_detail_rows(data, details):
+    for site in data["sites"]:
+        osu = {h["id"] for h in site["holes"] if h["source"] == "osu"}
+        assert set(details[site["id"]]["holes"]) == osu
+
+
+def test_detail_rows_are_well_formed(details):
+    for d in details.values():
+        assert d["columns"] == ["depth", "qc", "fs", "u2", "isbt", "crr_m", "csr_per_g"]
+        for hole_id, rows in d["holes"].items():
+            depths = [r[0] for r in rows]
+            assert depths == sorted(depths) and len(set(depths)) == len(depths), hole_id
+            for _, qc, _, _, _, crr, csr in rows:
+                assert qc is None or 0 <= qc < 100, hole_id
+                # CRR (with MSF) is between ~0.05 and ~0.7 for Qtn,cs < 160.
+                assert crr is None or 0.04 < crr < 0.8, hole_id
+                assert csr is None or 0 < csr < 2, hole_id
+
+
+def test_liquefaction_is_only_possible_below_groundwater(data, details):
+    for site in data["sites"]:
+        for h in (h for h in site["holes"] if h["source"] == "osu"):
+            for depth, *_, crr, _ in details[site["id"]]["holes"][h["id"]]:
+                if crr is not None:
+                    assert depth > h["gw"], (h["id"], depth)
+
+
+# --- City wells ------------------------------------------------------------------------------
+
+def test_city_wells_are_inside_the_box_and_have_no_personal_fields():
+    city = json.loads(CITY.read_text(encoding="utf-8"))
+    x0, x1, y0, y1 = city["bbox"]
+    assert len(city["wells"]) > 5000
+    for x, y, depth, strata, well_no, _ in city["wells"]:
+        assert x0 <= x <= x1 and y0 <= y <= y1, well_no
+        assert depth > 0 and strata >= 0
+    assert city["columns"] == ["x", "y", "depth", "strata", "well_no", "year"]
+    assert "OWNER" not in CITY.read_text(encoding="utf-8").upper()
