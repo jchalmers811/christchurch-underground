@@ -1,0 +1,23 @@
+# --- Data (see docs/decisions.md D-001) ---
+# Raw source data, NZGD files in particular, must never be committed or published.
+data/*
+!data/README.md
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Tool output ---
+.playwright-mcp/
