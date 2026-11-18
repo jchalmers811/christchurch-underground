@@ -176,7 +176,7 @@ The `Ic` classification can wait for Phase 1, but write a stub test for it so it
 
 | # | Task | Output |
 |---|---|---|
-| 1 | ✅ Set up the monorepo skeleton (`pipeline/`, `docs/`) with Python, `pyproj`, `geopandas`, `rasterio`, `pytest`, and a CI workflow that runs the tests. Passes locally; CI goes green once the repo is pushed to GitHub. | Green CI |
+| 1 | ✅ Set up the monorepo skeleton (`pipeline/`, `docs/`) with Python, `pyproj`, `geopandas`, `rasterio`, `pytest`, and a CI workflow that runs the tests. CI is green on GitHub. | Green CI |
 | 2 | ✅ Download the OSU DesignSafe CPT set (all 4 sites, 64 CPTs); read its documentation; note the format, units and CRS. Licence (ODC-BY) and citation recorded. Still to do: download date, and whether downloading needed a login. | `docs/data-sources.md` entry |
 | 3 | ~~Read the NZGD Terms of Use~~ ✅. Register with a personal email; email NZGD about the intended use (§2.3) | NZGD's reply in `docs/decisions.md` |
 | 4 | ✅ Check the ECan Wells & Bores layer and count the bore logs in the candidate areas. Licence: CC BY 4.0 (D-003). The 5,946 wells in urban Christchurch are on the public map. Bore log text is only available as PNGs. | `docs/data-sources.md` entry |
@@ -188,7 +188,7 @@ The `Ic` classification can wait for Phase 1, but write a stub test for it so it
 | 10 | Parse one CPT trace and one borehole/well log into clean structures, with tests. CPT half ✅ (`chch_pipeline.cpt`: reader, Robertson 2010 non-normalised SBT, intervals; drawn as cross-sections in `site/index.html`). Still to do: a borehole/well log. | **Parsed log ✅** |
 | 11 | Write a short Phase 0 summary: what worked, what was messy, and what changes in the plan for Phase 1 | Update `plan.md` |
 
-**Publish step** (guiding rule 1): put the map page on GitHub Pages and link it from the README. Until NZGD replies (§2.3), the public version shows only OSU + ECan points; NZGD points stay in a local-only build.
+**Publish step** (guiding rule 1) ✅: the map page is on GitHub Pages and linked from the README. Until NZGD replies (§2.3), the public version shows only OSU + ECan points; NZGD points stay in a local-only build.
 
 ---
 
@@ -197,7 +197,7 @@ The `Ic` classification can wait for Phase 1, but write a stub test for it so it
 - [ ] Area and bounding box
 - [x] NZGD: derived data only, raw files never published (see `decisions.md` D-001)
 - [ ] NZGD: reply to the purpose and locations email
-- [ ] OSU, ECan, LINZ: licence, attribution text, and whether republishing is allowed (OSU done: D-002)
+- [ ] OSU, ECan, LINZ: licence, attribution text, and whether republishing is allowed (OSU: D-002, ECan: D-003; LINZ still to do)
 - [ ] DEM survey used (2020–21 vs 2024–25) and why
 - [ ] Vertical datum handling (the NZVD2016 conversion and the offsets used)
 - [ ] Material classes for `Interval.material`, and how raw descriptions map onto them

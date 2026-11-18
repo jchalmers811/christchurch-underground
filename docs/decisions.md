@@ -69,3 +69,27 @@ Each entry: what was decided, why, and what was rejected.
 
 **Open.** If the project later copies bore log text out of the Well Search PNGs, check the Well Search Terms of Use first.
 
+---
+
+## D-004: deck.gl for the 3D viewer, starting with an orbit view per site
+
+- **Date:** 2026-11-18
+- **Phase:** 1 (started early, before Phase 0 is finished)
+- **Status:** Accepted
+
+**Context.** The plan left deck.gl vs CesiumJS open until Phase 1. The first 3D view shows the four OSU sites: lines of CPTs about 25 m long and up to 20 m deep. The viewer has to look *under* the ground, and it's hosted as a static site.
+
+**Decision.**
+1. **deck.gl** (v9, `@deck.gl/core` + `@deck.gl/layers`) in a Vite + TypeScript app in `web/`.
+2. An **OrbitView in a local Cartesian frame** (metres, NZTM2000 relative to the site centre, z up), not a globe or map view. The camera can go below the ground plane, and a vertical exaggeration slider scales z.
+3. CPTs are drawn as stacked `ColumnLayer` slices, one per soil behaviour type interval. NZGD investigations appear as wireframes only.
+4. The pipeline exports derived data to `web/public/data/osu-sites.json` (`python -m chch_pipeline.export_web`), which is committed. A contract test checks it in CI.
+5. GitHub Pages builds `web/` and serves it at `/3d/`, beside the map page.
+
+**Rejected.**
+- *CesiumJS*: built for globes and terrain, and good at underground views, but it's a much bigger bundle and its terrain and imagery need a Cesium ion token. Overkill for site-scale scenes.
+- *three.js*: full control, but more code for picking, tooltips and many instanced columns, which deck.gl already does.
+- *deck.gl MapView with a basemap*: the camera can't go below the map, which is the whole point here.
+
+**Revisit** when the area-wide model arrives. A MapView, or a basemap draped on the ground plane, may suit city scale better.
+

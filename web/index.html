@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Christchurch Underground 3D</title>
+  <meta name="description" content="Cone penetration tests at four Christchurch sites, drawn as 3D soil columns.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='5' fill='%23e3c069'/%3E%3Crect y='5' width='16' height='5' fill='%235b7ea3'/%3E%3Crect y='10' width='16' height='6' fill='%23b8862b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="viewer" aria-label="3D view of soil columns"></div>
+
+  <aside id="panel">
+    <header>
+      <h1>Christchurch Underground</h1>
+      <a class="back" href="../">← Map and cross-sections</a>
+    </header>
+    <p class="caption" id="site-caption"></p>
+    <div class="site-buttons" id="site-buttons" role="tablist"></div>
+
+    <label class="control">
+      <span>Vertical exaggeration <output id="exag-value">1×</output></span>
+      <input id="exag" type="range" min="1" max="5" step="0.5" value="1">
+    </label>
+    <label class="check"><input id="show-water" type="checkbox" checked> Groundwater (from CPT)</label>
+    <label class="check"><input id="show-nzgd" type="checkbox" checked> NZGD investigations (not available here)</label>
+
+    <ul class="legend" id="legend"></ul>
+    <p class="hint">Drag to rotate · right-drag or Shift-drag to pan · scroll to zoom.
+      Hover a column for details.</p>
+    <p class="fine">Each column is one CPT, coloured by Robertson (2010) soil behaviour type
+      (inferred from cone resistance, not samples). Columns are drawn wider than the real
+      3.6 cm cone so they're visible. Data: Stuedlein, Jana &amp; Cary (2021), DesignSafe-CI,
+      <a href="https://doi.org/10.17603/ds2-fy1v-hh47">doi:10.17603/ds2-fy1v-hh47</a>, ODC-BY.</p>
+  </aside>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

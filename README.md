@@ -5,6 +5,8 @@ The ground beneath part of Christchurch in 3D, built from real borehole and CPT 
 > Status: Phase 0 (data spike). See [plan.md](plan.md) and [docs/phase-0.md](docs/phase-0.md).
 >
 > **Live page:** https://jchalmers811.github.io/christchurch-underground/. It maps four lines of OSU cone penetration tests and about 6,000 ECan wells, and draws the ground beneath each CPT line.
+>
+> **3D viewer:** https://jchalmers811.github.io/christchurch-underground/3d/
 
 ## Repo layout
 
@@ -15,7 +17,9 @@ The ground beneath part of Christchurch in 3D, built from real borehole and CPT 
 | `docs/` | Phase plans, the [decisions log](docs/decisions.md) and a [glossary](docs/glossary.md) |
 | `data/` | Local data, **git-ignored**. Raw NZGD files must never be committed (see D-001). |
 
-`api/` and `web/` arrive in Phase 1.
+| `web/` | The 3D viewer: Vite + TypeScript + deck.gl (see D-004) |
+
+`api/` arrives later in Phase 1.
 
 ## Running the pipeline tests
 
@@ -28,6 +32,27 @@ pip install -e "pipeline[dev]"
 cd pipeline
 ruff check .
 pytest
+```
+
+## Rebuilding the published data
+
+The raw data never leaves your machine, so the derived files are generated locally and committed:
+
+```bash
+cd pipeline
+python -m chch_pipeline.page         # site/index.html (map + cross-sections)
+python -m chch_pipeline.export_web   # web/public/data/osu-sites.json (3D viewer data)
+```
+
+## Running the 3D viewer
+
+Needs Node 22+.
+
+```bash
+cd web
+npm install
+npm run dev      # local dev server
+npm run build    # typecheck + production build into web/dist
 ```
 
 ## Data and attribution

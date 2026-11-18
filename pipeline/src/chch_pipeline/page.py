@@ -21,6 +21,7 @@ from chch_pipeline.cpt import SBT_LABELS, classify, read_osu_cpt, to_intervals
 from chch_pipeline.ecan import read_wells
 from chch_pipeline.osu import LAYOUT_FILENAME, cpt_filename, read_layout
 from chch_pipeline.sites import read_summary
+from chch_pipeline.style import ZONE_COLOURS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ECAN_WELLS = Path("Canterbury Maps Open Data Wells and Bores") / "Wells_&_Bores_-_Existing.geojson"
@@ -40,15 +41,6 @@ SITES = {
     "Meadows": ("38 Meadows", "meadows", "Papanui, north · did not liquefy (control site)"),
 }
 
-ZONE_COLOURS = {
-    7: "#b8862b",  # gravelly sand to dense sand
-    6: "#e3c069",  # sand
-    5: "#b9c47c",  # sand mixtures
-    4: "#79a88f",  # silt mixtures
-    3: "#5b7ea3",  # clay
-    2: "#5e4130",  # organic / peat
-    0: "var(--unknown)",
-}
 
 PX_PER_M = 30
 COLUMN_WIDTH_M = 1.1
@@ -170,7 +162,8 @@ def render(raw_dir: Path) -> str:
     )
     panels = "".join(
         f'<section id="{anchor}"><h2>{html.escape(site)}</h2>'
-        f'<p class="caption">{caption} · <a href="#map" data-zoom="{anchor}">show on map</a></p>'
+        f'<p class="caption">{caption} · <a href="#map" data-zoom="{anchor}">show on map</a>'
+        f' · <a href="3d/#{anchor}"><strong>view in 3D</strong></a></p>'
         f'<div class="scroll">{_site_svg(site, layout, holes, raw_dir)}</div></section>'
         for site, (_, anchor, caption) in SITES.items()
     )
@@ -252,7 +245,8 @@ footer p { margin: 0 0 8px; }
 <p class="lede">What's under the ground in Christchurch, starting with four lines of cone
 penetration tests (CPTs) from Oregon State University and {{n_wells}} water wells and bores
 from Environment Canterbury. Three of the CPT sites liquefied in the 2010–11 earthquakes;
-one didn't. Pick a site to see where it is, then scroll down to see the ground beneath it.</p>
+one didn't. Pick a site to see where it is, then scroll down to see the ground beneath it,
+or <a href="3d/"><strong>explore the sites in 3D</strong></a>.</p>
 
 <div class="site-buttons" id="site-buttons"></div>
 <div id="map" role="region" aria-label="Map of the four test sites"></div>
@@ -356,7 +350,7 @@ for (const h of holes) {
     `<strong>${esc(h.designation)}</strong> · ${esc(h.kind)} · ${osu ? "OSU" : "NZGD"}<br>` +
     `${esc(h.date)} · ${fmt(h.depth, " m")} deep<br>` +
     `Groundwater: ${fmt(h.gw_measured, " m")} measured, ${fmt(h.gw_cpt, " m")} from CPT<br>` +
-    `<a href="#${h.anchor}">See the cross-section ↓</a>`
+    `<a href="#${h.anchor}">See the cross-section ↓</a> · <a href="3d/#${h.anchor}">View in 3D</a>`
   ).addTo(osuLayer);
 }
 

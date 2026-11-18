@@ -77,7 +77,7 @@ The project has to show:
 | Which area / suburb | Phase 0 | Central or eastern Christchurch: dense post-quake CPT data, varied ground |
 | Data sources and licences | Phase 0 | Oregon State CPT collections as the first test case; NZGD access terms |
 | Weekly time budget | Now | Sets the size of the phases and the target dates |
-| deck.gl vs CesiumJS | Phase 1 | |
+| deck.gl vs CesiumJS | Phase 1 | **Decided: deck.gl** (D-004) |
 | Hosting (static + API) | Phase 1 | Needs to be cheap or free and stay up long term |
 | Kriging vs Gaussian process | Phase 2 | |
 | Real data with withheld holes vs a synthetic truth | Phase 3 | Real is more impressive; synthetic is easier to score fairly |

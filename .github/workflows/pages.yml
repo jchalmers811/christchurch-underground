@@ -1,11 +1,12 @@
 name: Pages
 
-# Publishes site/ (generated locally by `python -m chch_pipeline.page` and committed,
-# because CI doesn't have the raw data; see docs/decisions.md D-002).
+# Publishes the map page (site/, generated locally by `python -m chch_pipeline.page`)
+# and the 3D viewer (web/, built here into /3d/). Both use derived data that the
+# pipeline writes and commits, because CI doesn't have the raw files (D-002).
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "web/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,9 +26,28 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build 3D viewer
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble site
+        run: |
+          mkdir _site
+          cp -r site/. _site/
+          cp -r web/dist _site/3d
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
