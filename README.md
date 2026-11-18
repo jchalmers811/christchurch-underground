@@ -4,7 +4,7 @@ The ground beneath part of Christchurch in 3D, built from real borehole and CPT 
 
 > Status: Phase 0 (data spike). See [plan.md](plan.md) and [docs/phase-0.md](docs/phase-0.md).
 >
-> **Live page:** https://jchalmers811.github.io/christchurch-underground/. It maps four lines of OSU cone penetration tests and draws the ground beneath each one.
+> **Live page:** https://jchalmers811.github.io/christchurch-underground/. It maps four lines of OSU cone penetration tests and about 6,000 ECan wells, and draws the ground beneath each CPT line.
 
 ## Repo layout
 
@@ -33,5 +33,6 @@ pytest
 ## Data and attribution
 
 - CPTs: Stuedlein, A., A. Jana, J. Cary (2021). "Subsurface Investigation at Selected Liquefaction Case History Sites, Christchurch, NZ", in Role of Spatial Variability in Liquefaction Consequence Severity. DesignSafe-CI. https://doi.org/10.17603/ds2-fy1v-hh47. Licensed under ODC-BY.
+- Wells: Environment Canterbury (Canterbury Regional Council), "Wells & Bores – Existing", via data.govt.nz, licensed under CC BY 4.0. Owner names and addresses are not published.
 - Elevation: sourced from the LINZ Data Service and licensed by Toitū Te Whenua Land Information New Zealand for re-use under CC BY 4.0.
 - Includes data derived from the New Zealand Geotechnical Database (MBIE), accessed free of charge and provided without warranty as to accuracy or fitness for purpose.

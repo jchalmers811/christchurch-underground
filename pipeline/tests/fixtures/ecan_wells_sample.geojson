@@ -1,0 +1,19 @@
+{"type": "FeatureCollection", "features": [
+ {"type": "Feature", "geometry": {"type": "Point", "coordinates": [172.6866, -43.5081]},
+  "properties": {"WELL_NO": "M35/0001", "NZTMX": 1574712, "NZTMY": 5182698, "DEPTH": 27.5,
+   "DATE_DRILLED": "1960-07-01T00:00:00Z", "WELL_TYPE_DESC": "Bore or Well",
+   "WELL_STATUS_DESC": "Active (exist, present)", "USE_CODE_1_DESC": "Domestic Supply",
+   "STRATA": 12, "INITIAL_SWL": -1.85, "GROUND_RL": 3.2,
+   "WELL_OWNER": "A Private Person", "ROAD_OR_STREET": "Some Street",
+   "Link": "http://ecan.govt.nz/data/well-search/welldetails/?WellNo=M35/0001"}},
+ {"type": "Feature", "geometry": {"type": "Point", "coordinates": [172.62, -43.53]},
+  "properties": {"WELL_NO": "M35/0002", "NZTMX": 1570000, "NZTMY": 5180000, "DEPTH": 0,
+   "DATE_DRILLED": null, "WELL_TYPE_DESC": "Bore or Well", "WELL_STATUS_DESC": "",
+   "USE_CODE_1_DESC": "  ", "STRATA": 0, "INITIAL_SWL": -999.99, "GROUND_RL": 0.0,
+   "WELL_OWNER": "Another Person", "Link": null}},
+ {"type": "Feature", "geometry": {"type": "Point", "coordinates": [171.0, -44.4]},
+  "properties": {"WELL_NO": "J39/0891", "NZTMX": 1451421, "NZTMY": 5077058, "DEPTH": 137.0,
+   "STRATA": 26, "INITIAL_SWL": -48.24, "GROUND_RL": -0.5}},
+ {"type": "Feature", "geometry": {"type": "Point", "coordinates": [172.6, -43.5]},
+  "properties": {"WELL_NO": "M35/0003", "NZTMX": null, "NZTMY": null, "DEPTH": 5}}
+]}

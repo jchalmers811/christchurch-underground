@@ -48,3 +48,24 @@ Each entry: what was decided, why, and what was rejected.
 - *Committing the raw OSU CSVs*: allowed by ODC-BY, but it mixes licensed and restricted raw data in one place for no gain.
 - *Building the page in CI*: CI doesn't have the raw files, so the generated page is committed instead. Rebuild it with `python -m chch_pipeline.page`.
 
+---
+
+## D-003: Publish ECan well locations, without owner details
+
+- **Date:** 2026-11-18
+- **Phase:** 0
+- **Status:** Accepted
+
+**Context.** ECan's "Wells & Bores – Existing" open data is licensed CC BY 4.0 on data.govt.nz. The Canterbury Maps website terms separately say the website's information can't be republished in "any substantial amount" without the councils' consent. They don't say whether that covers open-data downloads that carry their own licence. The download also includes `WELL_OWNER` (often a private person's name) and `ROAD_OR_STREET`.
+
+**Decision.**
+1. Publish wells inside the urban Christchurch box (NZTM E 1,562,000–1,582,000, N 5,172,000–5,190,000; 5,946 wells) on the public map, relying on the dataset's own CC BY 4.0 licence, with attribution in the page footer and README.
+2. Publish only an allowlist of technical fields: well number, position, depth, year drilled, use, layer count and initial water level. **Owner names and street addresses are never read into the pipeline output.** A test checks this.
+3. Link each well to ECan Well Search instead of copying its bore log image.
+
+**Rejected.**
+- *Publishing every field*: owner names are personal information and add nothing to the project.
+- *Asking for consent before publishing anything*: the dataset is explicitly published as open data under CC BY 4.0. If ECan objects, removing the layer is one change.
+
+**Open.** If the project later copies bore log text out of the Well Search PNGs, check the Well Search Terms of Use first.
+

@@ -120,7 +120,7 @@ One entry per source: where it is, the licence, and what the files actually look
 | **What** | Every registered water well and bore in Canterbury, with construction details and (for many) a lithology log |
 | **Service** | ArcGIS REST: `https://gis.ecan.govt.nz/arcgis/rest/services/Public/Groundwater/MapServer/1` ("Wells"). It also appears on data.govt.nz as "Wells & Bores". |
 | **Single-well viewer** | https://ecan.govt.nz/data/well-search (search by well number, e.g. `M35/2420`) |
-| **Licence** | _TODO: read the Well Search Terms of Use PDF and the data.govt.nz / Canterbury Maps licence_ |
+| **Licence** | **CC BY 4.0** for the open-data download "Wells & Bores – Existing" ([data.govt.nz catalogue](https://catalogue.data.govt.nz/dataset/wells-bores-existing3), checked 2026-11-18; author Canterbury Regional Council). The separate Canterbury Maps *website* terms say not to republish "any substantial amount" of the website's information without consent; see D-003 for how that's handled. _Still TODO: the Well Search Terms of Use PDF, which matters for the bore log PNGs._ |
 | **Bore log text** | **Only as a PNG image per well**, from Well Search. The Wells layer gives only the number of layers, and the open-data service (`gis2.ecan.govt.nz/.../Data_WFS`) has no strata table (checked 2026-11-10). _TODO: ask ECan whether they'll supply a strata table on request._ |
 
 **Useful fields in the Wells layer:** `WELL_NO` (e.g. `M35/2420`), `DEPTH` (m), `GROUND_RL` (0.0 seems to mean "unknown"; check this), `DATE_DRILLED`, `WELL_TYPE`, `DRILLER`, the `TOP_SCREEN_*`/`BOTTOM_SCREEN_*` depths, `INITIAL_SWL` (static water level), and **`STRATA` = the number of logged layers (0 = no log)**.

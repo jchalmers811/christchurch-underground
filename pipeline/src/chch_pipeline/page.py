@@ -18,10 +18,12 @@ from pathlib import Path
 import pandas as pd
 
 from chch_pipeline.cpt import SBT_LABELS, classify, read_osu_cpt, to_intervals
+from chch_pipeline.ecan import read_wells
 from chch_pipeline.osu import LAYOUT_FILENAME, cpt_filename, read_layout
 from chch_pipeline.sites import read_summary
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+ECAN_WELLS = Path("Canterbury Maps Open Data Wells and Bores") / "Wells_&_Bores_-_Existing.geojson"
 
 
 # Layout-file site name -> (folder, anchor id, caption).
@@ -147,9 +149,20 @@ def _holes_json(holes: pd.DataFrame) -> str:
     return json.dumps(records, ensure_ascii=False).replace("</", "<\\/")
 
 
+def _wells_json(wells: pd.DataFrame) -> str:
+    """Compact rows: [lat, lon, well_no, depth, year, use, strata, initial_swl]."""
+    cols = ["lat", "lon", "well_no", "depth", "year_drilled", "use", "strata", "initial_swl"]
+    out = wells[cols].copy()
+    out[["lat", "lon"]] = out[["lat", "lon"]].round(6)
+    out[["depth", "initial_swl"]] = out[["depth", "initial_swl"]].round(2)
+    rows = out.astype(object).where(out.notna(), None).values.tolist()
+    return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
 def render(raw_dir: Path) -> str:
     layout = read_layout(raw_dir / "Avondale Playground" / LAYOUT_FILENAME)
     holes = load_holes(raw_dir)
+    wells = read_wells(raw_dir / ECAN_WELLS)
     legend = "".join(
         f'<li><span class="swatch" style="background:{ZONE_COLOURS[z]}"></span>'
         f"{html.escape(SBT_LABELS[z])}</li>"
@@ -165,6 +178,9 @@ def render(raw_dir: Path) -> str:
         TEMPLATE.replace("{{legend}}", legend)
         .replace("{{panels}}", panels)
         .replace("{{holes}}", _holes_json(holes))
+        .replace("{{wells}}", _wells_json(wells))
+        .replace("{{n_wells}}", f"{len(wells):,}")
+        .replace("{{n_logged}}", f"{(wells['strata'] > 0).sum():,}")
     )
 
 
@@ -199,6 +215,9 @@ a { color: var(--accent); }
 #map { height: 420px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 8px;
        z-index: 0; }
 .map-note { color: var(--muted); font-size: 13px; margin: 0 0 28px; }
+.map-note p { margin: 0 0 6px; max-width: 90ch; }
+.depth-legend { margin: 0; font-size: 12px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .site-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
 .site-buttons button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px;
        border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; }
@@ -231,14 +250,25 @@ footer p { margin: 0 0 8px; }
 <main>
 <h1>Christchurch Underground</h1>
 <p class="lede">What's under the ground in Christchurch, starting with four lines of cone
-penetration tests (CPTs) from Oregon State University. Three sites liquefied in the
-2010–11 earthquakes; one didn't. Pick a site to see where it is, then scroll down to see
-the ground beneath it.</p>
+penetration tests (CPTs) from Oregon State University and {{n_wells}} water wells and bores
+from Environment Canterbury. Three of the CPT sites liquefied in the 2010–11 earthquakes;
+one didn't. Pick a site to see where it is, then scroll down to see the ground beneath it.</p>
 
 <div class="site-buttons" id="site-buttons"></div>
 <div id="map" role="region" aria-label="Map of the four test sites"></div>
-<p class="map-note">Orange dots are OSU CPTs; hollow dots are NZGD investigations on the same
-lines, located by OSU. Click a dot for details.</p>
+<div class="map-note">
+<p>Large orange dots are OSU CPTs; hollow dots are NZGD investigations on the same lines,
+located by OSU. Small dots are ECan wells ({{n_logged}} of them have a logged soil profile),
+coloured by depth. Use the layer button (top right) to show or hide them; click any dot for
+details.</p>
+<ul class="legend depth-legend">
+<li><span class="dot" style="background:#a8dbd0"></span>under 10 m</li>
+<li><span class="dot" style="background:#4fa3a5"></span>10–30 m</li>
+<li><span class="dot" style="background:#2b6f8a"></span>30–100 m</li>
+<li><span class="dot" style="background:#1b3a5c"></span>100 m or more</li>
+<li><span class="dot" style="background:#9a958c"></span>depth not recorded</li>
+</ul>
+</div>
 
 <ul class="legend">{{legend}}<li><span class="swatch water"></span>Groundwater (from CPT)</li></ul>
 {{panels}}
@@ -254,13 +284,19 @@ Liquefaction Case History Sites, Christchurch, NZ", in Role of Spatial Variabili
 Liquefaction Consequence Severity. DesignSafe-CI.
 <a href="https://doi.org/10.17603/ds2-fy1v-hh47">doi:10.17603/ds2-fy1v-hh47</a>. Licensed
 under the <a href="https://opendatacommons.org/licenses/by/">Open Data Commons Attribution
-License</a>; this page shows derived data. Map data © OpenStreetMap contributors.</p>
+License</a>; this page shows derived data.</p>
+<p>Wells: Environment Canterbury (Canterbury Regional Council), "Wells &amp; Bores –
+Existing", via <a href="https://catalogue.data.govt.nz/dataset/wells-bores-existing3">data.govt.nz</a>,
+licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Owner
+names and addresses are left out. Drilling dates are often approximate, and a well's log is a
+driller's description, not a lab test. Map data © OpenStreetMap contributors.</p>
 </footer>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const holes = {{holes}};
+const wells = {{wells}};
 const map = L.map("map", { scrollWheelZoom: false });
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 21, maxNativeZoom: 19,
@@ -270,6 +306,44 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
 const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
 const fmt = (v, unit) => (v === null ? "n/a" : v + unit);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ECan wells: drawn on a canvas in a pane below the OSU markers (thousands of points).
+map.createPane("wells").style.zIndex = 350;
+const wellRenderer = L.canvas({ pane: "wells", padding: 0.3 });
+const depthColour = d => d === null ? "#9a958c" : d < 10 ? "#a8dbd0" : d < 30 ? "#4fa3a5"
+  : d < 100 ? "#2b6f8a" : "#1b3a5c";
+const withLog = L.layerGroup(), withoutLog = L.layerGroup();
+for (const [lat, lon, no, depth, year, use, strata, swl] of wells) {
+  const logged = strata > 0;
+  L.circleMarker([lat, lon], {
+    renderer: wellRenderer, pane: "wells", radius: logged ? 1.8 : 1.35,
+    stroke: false, fillColor: depthColour(depth), fillOpacity: logged ? 0.85 : 0.5
+  }).bindPopup(
+    `<strong>${esc(no)}</strong> · ECan well<br>` +
+    `${depth === null ? "Depth not recorded" : depth + " m deep"}` +
+    `${year === null ? "" : ` · drilled ${year} (dates are often approximate)`}<br>` +
+    `${use ? "Use: " + esc(use) + "<br>" : ""}` +
+    `${swl === null ? "" : `Water level when drilled: ${swl} m below the reference point<br>`}` +
+    `${logged ? `Soil log: ${strata} layers` : "No soil log"} · ` +
+    `<a href="https://www.ecan.govt.nz/data/well-search/welldetails/?WellNo=${encodeURIComponent(no)}" ` +
+    `target="_blank" rel="noopener">ECan Well Search ↗</a>`
+  ).addTo(logged ? withLog : withoutLog);
+}
+withLog.addTo(map);
+// Small dots at city scale, bigger once zoomed in to a suburb.
+const wellRadius = (logged, z) => (z <= 12 ? 1.8 : z <= 14 ? 3 : 5) * (logged ? 1 : 0.75);
+map.on("zoomend", () => {
+  const z = map.getZoom();
+  withLog.eachLayer(m => m.setRadius(wellRadius(true, z)));
+  withoutLog.eachLayer(m => m.setRadius(wellRadius(false, z)));
+});
+
+const osuLayer = L.layerGroup().addTo(map);
+L.control.layers(null, {
+  "OSU CPT lines": osuLayer,
+  "ECan wells with a soil log": withLog,
+  "ECan wells without a log": withoutLog,
+}, { collapsed: true }).addTo(map);
 
 const bySite = {};
 for (const h of holes) {
@@ -283,7 +357,7 @@ for (const h of holes) {
     `${esc(h.date)} · ${fmt(h.depth, " m")} deep<br>` +
     `Groundwater: ${fmt(h.gw_measured, " m")} measured, ${fmt(h.gw_cpt, " m")} from CPT<br>` +
     `<a href="#${h.anchor}">See the cross-section ↓</a>`
-  ).addTo(map);
+  ).addTo(osuLayer);
 }
 
 const all = holes.map(h => [h.lat, h.lon]);

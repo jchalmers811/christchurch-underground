@@ -179,7 +179,7 @@ The `Ic` classification can wait for Phase 1, but write a stub test for it so it
 | 1 | ✅ Set up the monorepo skeleton (`pipeline/`, `docs/`) with Python, `pyproj`, `geopandas`, `rasterio`, `pytest`, and a CI workflow that runs the tests. Passes locally; CI goes green once the repo is pushed to GitHub. | Green CI |
 | 2 | ✅ Download the OSU DesignSafe CPT set (all 4 sites, 64 CPTs); read its documentation; note the format, units and CRS. Licence (ODC-BY) and citation recorded. Still to do: download date, and whether downloading needed a login. | `docs/data-sources.md` entry |
 | 3 | ~~Read the NZGD Terms of Use~~ ✅. Register with a personal email; email NZGD about the intended use (§2.3) | NZGD's reply in `docs/decisions.md` |
-| 4 | ✅ Check the ECan Wells & Bores layer and count the bore logs in the candidate areas. Still to do: the licence/terms. Bore log text is only available as PNGs. | `docs/data-sources.md` entry |
+| 4 | ✅ Check the ECan Wells & Bores layer and count the bore logs in the candidate areas. Licence: CC BY 4.0 (D-003). The 5,946 wells in urban Christchurch are on the public map. Bore log text is only available as PNGs. | `docs/data-sources.md` entry |
 | 5 | Choose the area; write down its bounding box in EPSG:2193 | `docs/decisions.md` entry |
 | 6 | Download a few hundred CPT/borehole records for the area. For NZGD, use the portal's own download/export only; no scraping (cl. 5.3). Write down the steps. | `data/raw/` (git-ignored) + notes on the steps |
 | 7 | Fetch the DEM window for the area from LINZ / `s3://nz-elevation` | `data/raw/dem.tif` |
