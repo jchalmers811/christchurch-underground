@@ -4,7 +4,7 @@ The ground beneath part of Christchurch in 3D, built from real borehole and CPT 
 
 > Status: Phase 0 (data spike). See [plan.md](plan.md) and [docs/phase-0.md](docs/phase-0.md).
 >
-> **Live page:** _link once GitHub Pages is on_. It maps four lines of OSU cone penetration tests and draws the ground beneath each one.
+> **Live page:** https://jchalmers811.github.io/christchurch-underground/. It maps four lines of OSU cone penetration tests and draws the ground beneath each one.
 
 ## Repo layout
 
