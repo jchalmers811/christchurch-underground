@@ -48,6 +48,8 @@ Each entry: what was decided, why, and what was rejected.
 - *Committing the raw OSU CSVs*: allowed by ODC-BY, but it mixes licensed and restricted raw data in one place for no gain.
 - *Building the page in CI*: CI doesn't have the raw files, so the generated page is committed instead. Rebuild it with `python -m chch_pipeline.page`.
 
+**Update 2026-11-18.** The 3D viewer's trace chart publishes the OSU CPT readings themselves (qc, fs, u2, every 2 cm) in `web/public/data/sites/*.json`. ODC-BY allows this with attribution, which the viewer shows. NZGD data is still never published (D-001), and the raw source files still stay out of git.
+
 ---
 
 ## D-003: Publish ECan well locations, without owner details
@@ -92,4 +94,26 @@ Each entry: what was decided, why, and what was rejected.
 - *deck.gl MapView with a basemap*: the camera can't go below the map, which is the whole point here.
 
 **Revisit** when the area-wide model arrives. A MapView, or a basemap draped on the ground plane, may suit city scale better.
+
+---
+
+## D-005: Liquefaction screening with the Robertson & Wride CPT method
+
+- **Date:** 2026-11-18
+- **Phase:** 1 (early), with a preview of Phase 2's "where we know least"
+- **Status:** Accepted
+
+**Context.** The four OSU sites are liquefaction case histories: three liquefied in 2010–11 and Meadows didn't. Showing which layers a standard method says would liquefy tells that story directly. But it's easy to overclaim, so the method and its limits have to be explicit.
+
+**Decision.**
+1. Use the simplified CPT method of Robertson & Wride (1998) with the Robertson (2009) iterative normalisation (`pipeline/src/chch_pipeline/liquefaction.py`, unit tested against the published formulas).
+2. Assumptions: qt ≈ qc (no area ratio in the files); unit weight from Robertson & Cabal (2010), clamped to 14–22 kN/m³; hydrostatic pore pressure below the CPT-derived groundwater depth; rd from Liao & Whitman (1986); MSF = 10^2.24 / Mw^2.56 with Mw 6.2 (22 February 2011); soil with Ic > 2.6 or Qtn,cs ≥ 160 treated as not susceptible; no K_sigma, K_alpha or thin-layer corrections.
+3. The pipeline exports the earthquake-independent terms (crr_m = CRR7.5 × MSF and csr_per_g), so the viewer computes FS = crr_m / (csr_per_g × PGA) live for a **PGA slider** (default 0.35 g, a round scenario value, not a site-specific estimate).
+4. Summarise each CPT with LPI (Iwasaki et al. 1978) and show the site median.
+5. **Say plainly where it fails.** At Meadows, the control site that didn't liquefy, the method predicts liquefaction in looser sands below about 5 m (median LPI ≈ 13 at 0.35 g), higher than at the three sites that did liquefy. Those sands sit under a 2.5–5 m clay layer, which likely stopped liquefaction reaching the surface, and LPI ignores capping layers. The viewer says this next to the result, and it belongs in the "what this can't tell you" section.
+
+**Rejected.**
+- *Site-specific PGAs from the literature*: better, but they need a citable source per site. A slider is honest about the uncertainty in the meantime.
+- *Tuning parameters until Meadows looks safe*: that would hide exactly the limitation worth showing.
+- *Computing FS in TypeScript from raw readings*: it would duplicate the science in two languages. Python does the soil side once, with tests.
 
